@@ -1,0 +1,62 @@
+.leaflet-container {
+  height: 100%;
+  width: 100%;
+  border-radius: 1rem;
+  overflow: hidden;
+}
+
+.App {
+  min-height: 100vh;
+  background: linear-gradient(135deg, #F8FAFC 0%, #E0E7FF 100%);
+}
+
+.dark .App {
+  background: linear-gradient(135deg, #0F172A 0%, #1E293B 100%);
+}
+
+.glass-card {
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+}
+
+.dark .glass-card {
+  background: rgba(30, 41, 59, 0.7);
+  border: 1px solid rgba(51, 65, 85, 0.4);
+}
+
+.neumorphic-card {
+  background: white;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.dark .neumorphic-card {
+  background: #1E293B;
+  border: 1px solid #334155;
+}
+
+.gradient-hero {
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.1) 0%, rgba(248, 250, 252, 0.3) 100%);
+}
+
+.chart-container {
+  position: relative;
+  height: 300px;
+  width: 100%;
+}
+
+@media (max-width: 768px) {
+  .chart-container {
+    height: 250px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
