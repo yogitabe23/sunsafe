@@ -9,17 +9,19 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from dotenv import load_dotenv
-from fastapi import APIRouter, FastAPI, HTTPException, Query
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query
 from fastapi.responses import StreamingResponse
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from motor.motor_asyncio import AsyncIOMotorClient
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 from starlette.middleware.cors import CORSMiddleware
-
-import ml_model
-from weather_service import fetch_weather_data
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / ".env")
+
+import ml_model
+from auth import create_access_token, decode_access_token, hash_password, verify_password
+from weather_service import fetch_weather_data
 
 logging.basicConfig(
     level=logging.INFO,
@@ -40,6 +42,7 @@ MAX_ANALYTICS_RECORDS = 5000
 async def lifespan(app: FastAPI):
     # Warm up the ML model once so the first /predict call isn't slow.
     ml_model.warm_up()
+    await db.users.create_index("email", unique=True)
     logger.info("SunSafe API startup complete.")
     yield
     client.close()
@@ -48,8 +51,33 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="SunSafe API", lifespan=lifespan)
 api_router = APIRouter(prefix="/api")
+bearer_scheme = HTTPBearer(auto_error=False)
 
 # ============ Models ============
+
+
+class UserRegister(BaseModel):
+    email: EmailStr
+    password: str = Field(..., min_length=8, max_length=128)
+    name: str = Field(..., min_length=1, max_length=100)
+
+
+class UserLogin(BaseModel):
+    email: EmailStr
+    password: str
+
+
+class UserPublic(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str
+    email: str
+    name: str
+
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    user: UserPublic
 
 
 class WeatherResponse(BaseModel):
@@ -129,12 +157,73 @@ EMPTY_ANALYTICS = AnalyticsResponse(
     risk_distribution={}, avg_confidence=0, total_predictions=0,
 )
 
+# ============ Auth ============
+
+
+async def get_current_user(credentials: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme)) -> dict:
+    unauthorized = HTTPException(
+        status_code=401, detail="Not authenticated", headers={"WWW-Authenticate": "Bearer"}
+    )
+    if credentials is None:
+        raise unauthorized
+
+    user_id = decode_access_token(credentials.credentials)
+    if user_id is None:
+        raise unauthorized
+
+    user = await db.users.find_one({"id": user_id}, {"_id": 0, "password_hash": 0})
+    if user is None:
+        raise unauthorized
+
+    return user
+
+
 # ============ Routes ============
 
 
 @api_router.get("/")
 async def root():
     return {"message": "SunSafe API - AI Powered Sunscreen Recommendation System"}
+
+
+@api_router.post("/auth/register", response_model=TokenResponse, status_code=201)
+async def register(request: UserRegister):
+    email = request.email.lower()
+    if await db.users.find_one({"email": email}):
+        raise HTTPException(status_code=409, detail="An account with this email already exists")
+
+    user_doc = {
+        "id": str(uuid.uuid4()),
+        "email": email,
+        "name": request.name,
+        "password_hash": hash_password(request.password),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.users.insert_one(user_doc)
+
+    token = create_access_token(user_doc["id"])
+    return TokenResponse(
+        access_token=token,
+        user=UserPublic(id=user_doc["id"], email=user_doc["email"], name=user_doc["name"]),
+    )
+
+
+@api_router.post("/auth/login", response_model=TokenResponse)
+async def login(request: UserLogin):
+    user = await db.users.find_one({"email": request.email.lower()})
+    if not user or not verify_password(request.password, user["password_hash"]):
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+
+    token = create_access_token(user["id"])
+    return TokenResponse(
+        access_token=token,
+        user=UserPublic(id=user["id"], email=user["email"], name=user["name"]),
+    )
+
+
+@api_router.get("/auth/me", response_model=UserPublic)
+async def get_me(current_user: dict = Depends(get_current_user)):
+    return UserPublic(**current_user)
 
 
 @api_router.get("/weather", response_model=WeatherResponse)
@@ -150,7 +239,7 @@ async def get_weather(
 
 
 @api_router.post("/predict", response_model=PredictionResponse)
-async def predict(request: PredictionRequest):
+async def predict(request: PredictionRequest, current_user: dict = Depends(get_current_user)):
     try:
         prediction = ml_model.predict_sunscreen(request.weather, request.user_profile.model_dump())
     except Exception as e:
@@ -159,6 +248,7 @@ async def predict(request: PredictionRequest):
 
     history_doc = {
         "id": str(uuid.uuid4()),
+        "user_id": current_user["id"],
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "latitude": request.latitude,
         "longitude": request.longitude,
@@ -185,9 +275,10 @@ async def predict(request: PredictionRequest):
 async def get_history(
     limit: int = Query(100, ge=1, le=MAX_HISTORY_LIMIT),
     skip: int = Query(0, ge=0),
+    current_user: dict = Depends(get_current_user),
 ):
     try:
-        predictions = await db.predictions.find({}, {"_id": 0}) \
+        predictions = await db.predictions.find({"user_id": current_user["id"]}, {"_id": 0}) \
             .sort("timestamp", -1).skip(skip).limit(limit).to_list(limit)
 
         for pred in predictions:
@@ -201,9 +292,10 @@ async def get_history(
 
 
 @api_router.get("/analytics", response_model=AnalyticsResponse)
-async def get_analytics():
+async def get_analytics(current_user: dict = Depends(get_current_user)):
     try:
-        predictions = await db.predictions.find({}, {"_id": 0}).to_list(MAX_ANALYTICS_RECORDS)
+        predictions = await db.predictions.find({"user_id": current_user["id"]}, {"_id": 0}) \
+            .to_list(MAX_ANALYTICS_RECORDS)
     except Exception as e:
         logger.error("Error fetching analytics data: %s", e)
         raise HTTPException(status_code=500, detail="Failed to generate analytics") from e
@@ -266,9 +358,9 @@ async def get_analytics():
 
 
 @api_router.get("/export")
-async def export_csv():
+async def export_csv(current_user: dict = Depends(get_current_user)):
     try:
-        predictions = await db.predictions.find({}, {"_id": 0}).to_list(10000)
+        predictions = await db.predictions.find({"user_id": current_user["id"]}, {"_id": 0}).to_list(10000)
     except Exception as e:
         logger.error("Error exporting CSV: %s", e)
         raise HTTPException(status_code=500, detail="Failed to export CSV") from e

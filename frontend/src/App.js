@@ -4,9 +4,13 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { Toaster } from "sonner";
 import { Navbar } from "./components/Navbar";
 import { ErrorBoundary } from "./components/ErrorBoundary";
+import { ProtectedRoute } from "./components/ProtectedRoute";
+import { AuthProvider } from "@/context/AuthContext";
 import { Dashboard } from "./pages/Dashboard";
 import { Analytics } from "./pages/Analytics";
 import { History } from "./pages/History";
+import { Login } from "./pages/Login";
+import { Register } from "./pages/Register";
 
 const DARK_MODE_KEY = "sunsafe-dark-mode";
 
@@ -37,12 +41,37 @@ function App() {
     <ErrorBoundary>
       <div className="App min-h-screen">
         <BrowserRouter>
-          <Navbar darkMode={darkMode} toggleDarkMode={toggleDarkMode} />
-          <Routes>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/analytics" element={<Analytics />} />
-            <Route path="/history" element={<History />} />
-          </Routes>
+          <AuthProvider>
+            <Navbar darkMode={darkMode} toggleDarkMode={toggleDarkMode} />
+            <Routes>
+              <Route path="/login" element={<Login />} />
+              <Route path="/register" element={<Register />} />
+              <Route
+                path="/"
+                element={
+                  <ProtectedRoute>
+                    <Dashboard />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/analytics"
+                element={
+                  <ProtectedRoute>
+                    <Analytics />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/history"
+                element={
+                  <ProtectedRoute>
+                    <History />
+                  </ProtectedRoute>
+                }
+              />
+            </Routes>
+          </AuthProvider>
         </BrowserRouter>
         <Toaster position="top-right" richColors />
       </div>

@@ -1,11 +1,19 @@
 import React from "react";
-import { Link, useLocation } from "react-router-dom";
-import { Sun, Moon, Activity, BarChart3, History } from "lucide-react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Sun, Moon, Activity, BarChart3, History, LogOut } from "lucide-react";
 import { Button } from "./ui/button";
+import { useAuth } from "@/context/AuthContext";
 
 export const Navbar = ({ darkMode, toggleDarkMode }) => {
   const location = useLocation();
+  const navigate = useNavigate();
+  const { user, logout } = useAuth();
   const isActive = (path) => location.pathname === path;
+
+  const handleLogout = () => {
+    logout();
+    navigate("/login", { replace: true });
+  };
 
   return (
     <nav className="glass-card sticky top-0 z-50 border-b">
@@ -22,26 +30,30 @@ export const Navbar = ({ darkMode, toggleDarkMode }) => {
           </Link>
 
           <div className="flex items-center space-x-2">
-            <Link to="/" data-testid="nav-home">
-              <Button variant={isActive("/") ? "default" : "ghost"} size="sm" className="transition-colors">
-                <Activity className="w-4 h-4 mr-2" />
-                Dashboard
-              </Button>
-            </Link>
+            {user && (
+              <>
+                <Link to="/" data-testid="nav-home">
+                  <Button variant={isActive("/") ? "default" : "ghost"} size="sm" className="transition-colors">
+                    <Activity className="w-4 h-4 mr-2" />
+                    Dashboard
+                  </Button>
+                </Link>
 
-            <Link to="/analytics" data-testid="nav-analytics">
-              <Button variant={isActive("/analytics") ? "default" : "ghost"} size="sm" className="transition-colors">
-                <BarChart3 className="w-4 h-4 mr-2" />
-                Analytics
-              </Button>
-            </Link>
+                <Link to="/analytics" data-testid="nav-analytics">
+                  <Button variant={isActive("/analytics") ? "default" : "ghost"} size="sm" className="transition-colors">
+                    <BarChart3 className="w-4 h-4 mr-2" />
+                    Analytics
+                  </Button>
+                </Link>
 
-            <Link to="/history" data-testid="nav-history">
-              <Button variant={isActive("/history") ? "default" : "ghost"} size="sm" className="transition-colors">
-                <History className="w-4 h-4 mr-2" />
-                History
-              </Button>
-            </Link>
+                <Link to="/history" data-testid="nav-history">
+                  <Button variant={isActive("/history") ? "default" : "ghost"} size="sm" className="transition-colors">
+                    <History className="w-4 h-4 mr-2" />
+                    History
+                  </Button>
+                </Link>
+              </>
+            )}
 
             <Button
               variant="ghost"
@@ -53,6 +65,23 @@ export const Navbar = ({ darkMode, toggleDarkMode }) => {
             >
               {darkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
             </Button>
+
+            {user && (
+              <>
+                <span className="hidden sm:inline text-sm text-slate-600 dark:text-slate-400 ml-2" data-testid="nav-user-name">
+                  {user.name}
+                </span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleLogout}
+                  data-testid="logout-btn"
+                  aria-label="Log out"
+                >
+                  <LogOut className="w-4 h-4" />
+                </Button>
+              </>
+            )}
           </div>
         </div>
       </div>

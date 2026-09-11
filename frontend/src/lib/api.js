@@ -8,9 +8,24 @@ if (!BACKEND_URL) {
   console.error("REACT_APP_BACKEND_URL is not set. Check your .env file.");
 }
 
+export const TOKEN_KEY = "sunsafe-token";
+
 export const api = axios.create({
   baseURL: `${BACKEND_URL}/api`,
   timeout: 15000,
+});
+
+api.interceptors.request.use((config) => {
+  let token = null;
+  try {
+    token = window.localStorage?.getItem(TOKEN_KEY);
+  } catch {
+    // localStorage unavailable (e.g. private browsing) — request goes out unauthenticated.
+  }
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
 });
 
 export function getErrorMessage(err, fallback = "Something went wrong") {

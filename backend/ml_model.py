@@ -176,12 +176,15 @@ def predict_sunscreen(weather_data: Dict[str, Any], user_profile: Dict[str, Any]
     apply_pred = int(models["apply"].predict(X)[0])
     confidence = int(max(models["spf"].predict_proba(X)[0]) * 100)
 
+    # Risk reflects actual UV exposure, not the recommended SPF — spf_pred can be
+    # pushed up by skin type alone (e.g. fair skin), which shouldn't read as an
+    # "Extreme UV" alert when there's no sun (uv_index 0, e.g. at night).
     uv_index = input_data["uv_index"]
-    if uv_index >= 8 or spf_pred >= 50:
+    if uv_index >= 8:
         risk = "Extreme"
-    elif uv_index >= 6 or spf_pred >= 40:
+    elif uv_index >= 6:
         risk = "High"
-    elif uv_index >= 3 or spf_pred >= 30:
+    elif uv_index >= 3:
         risk = "Moderate"
     else:
         risk = "Low"
